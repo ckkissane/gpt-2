@@ -7,6 +7,7 @@ import torch.nn.functional as F
 from torch import einsum
 from torchtyping import TensorType
 from typing import Optional
+import transformers
 
 
 class UnidirectionalAttention(nn.Module):
@@ -163,3 +164,65 @@ class GPT2(nn.Module):
         enc = self.ln(enc)
         logits = einsum("bnl, vl -> bnv", enc, self.token_embedding.weight)
         return GPT2Output(logits=logits[:, -1, :], final_encoding=enc[:, -1, :])
+
+
+def _copy_weight_bias(mine, theirs, transpose=False):
+    if transpose:
+        mine.weight.copy_(theirs.weight.T)
+    else:
+        mine.weight.copy_(theirs.weight)
+    if mine.bias is not None:
+        mine.bias.copy_(theirs.bias)
+
+
+def get_pretrained_gpt():
+    pretrained_gpt = transformers.AutoModelForCausalLM.from_pretrained("gpt2")
+    config = dict(
+        num_layers=12,
+        num_heads=12,
+        vocab_size=50257,
+        hidden_size=768,
+        max_position_embeddings=1024,
+        dropout=0.1,
+        layer_norm_epsilon=1e-5,
+    )
+    my_gpt = GPT2(**config)
+    for p in my_gpt.parameters():
+        p.requires_grad = False
+
+    my_gpt.token_embedding.weight.copy_(pretrained_gpt.transformer.wte.weight)
+    my_gpt.pos_embedding.weight.copy_(pretrained_gpt.transformer.wpe.weight)
+    _copy_weight_bias(my_gpt.ln, pretrained_gpt.transformer.ln_f)
+
+    for my_block, hf_block in zip(my_gpt.blocks, pretrained_gpt.transformer.h):
+        _copy_weight_bias(my_block.ln1, hf_block.ln_1)
+        _copy_weight_bias(my_block.attn.qkv_proj, hf_block.attn.c_attn, transpose=True)
+        _copy_weight_bias(
+            my_block.attn.output_proj, hf_block.attn.c_proj, transpose=True
+        )
+        _copy_weight_bias(my_block.ln2, hf_block.ln_2)
+        _copy_weight_bias(my_block.linear1, hf_block.mlp.c_fc, transpose=True)
+        _copy_weight_bias(my_block.linear2, hf_block.mlp.c_proj, transpose=True)
+    return my_gpt
+
+
+def load_weights(GPT2Class):
+    pretrained_gpt = get_pretrained_gpt()
+    my_gpt = GPT2Class(
+        num_layers=12,
+        num_heads=12,
+        vocab_size=50257,
+        hidden_size=768,
+        max_position_embeddings=1024,
+        dropout=0.1,
+        layer_norm_epsilon=1e-5,
+    )
+
+    state_dict = {
+        mykey: v
+        for (k, v), mykey in zip(
+            pretrained_gpt.state_dict().items(), my_gpt.state_dict().keys()
+        )
+    }
+    my_gpt.load_state_dict(state_dict)
+    return my_gpt
