@@ -8,4 +8,4 @@ gpt2.py contains the actual model definition, as well as a function to load pre-
 ## References
 - [Language Models are Unsupervised Multitask Learners](https://d4mucfpksywv.cloudfront.net/better-language-models/language_models_are_unsupervised_multitask_learners.pdf), the original GPT-2 paper from OpenAI
 - Jay Alammar’s [The Illustrated GPT-2](https://jalammar.github.io/illustrated-gpt2/)
-- Andrej Kaparthy’s [minGPT](https://github.com/karpathy/minGPT)
+- Andrej Karpathy’s [minGPT](https://github.com/karpathy/minGPT)
